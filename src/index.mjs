@@ -2,9 +2,14 @@ import readline from "readline";
 import os from "os";
 import path from "path";
 import fs from "fs";
-import crypto from "crypto";
-import zlib from "zlib";
-import stream from "stream";
+import {copyFile} from "./lib/copyFile.mjs";
+import {moveFile} from "./lib/moveFile.mjs";
+import {removeFile} from "./lib/removeFile.mjs";
+import {renameFile} from "./lib/renameFile.mjs";
+import {osParam} from "./lib/os.mjs";
+import {hash} from "./lib/hash.mjs";
+import {compressZlib} from "./lib/zlib/compress.mjs";
+import {decompressZlib} from "./lib/zlib/decompress.mjs";
 
 const homeDir = os.homedir();
 
@@ -72,144 +77,25 @@ const index = () => {
             stream.end();
         } else if (input.startsWith("rn")) {
             const [file, newFile] = input.split(" ").slice(1);
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            const newFilePath = path.join(currentDir, newFile);
-
-            if (fs.existsSync(filePath)) {
-                console.log(`You are currently in ${currentDir}:`);
-                fs.rename(filePath, newFilePath, (err) => {
-                    if (err) throw err;
-                    console.log("Rename complete!");
-                });
-            } else {
-                console.log("Operation failed");
-            }
+            renameFile(file, newFile, currentDir);
         } else if (input.startsWith("cp")) {
             const [file, pathDirectory] = input.split(" ").slice(1);
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            const pathFinish = path.isAbsolute(pathDirectory)
-                ? path.join(pathDirectory, file)
-                : path.join(currentDir, pathDirectory, file);
-
-            if (fs.existsSync(filePath)) {
-                console.log(`You are currently in ${currentDir}:`);
-                const readStream = fs.createReadStream(filePath);
-                const writeStream = fs.createWriteStream(pathFinish);
-                readStream.pipe(writeStream);
-            } else {
-                console.log("Operation failed");
-            }
+            copyFile(file, pathDirectory, currentDir);
         } else if (input.startsWith("mv")) {
-            const [fileCur, pathDirectory] = input.split(" ").slice(1);
-            const filePath = path.isAbsolute(fileCur)
-                ? fileCur
-                : path.join(currentDir, fileCur);
-            let pathFinish = path.isAbsolute(pathDirectory)
-                ? path.join(pathDirectory, fileCur)
-                : path.join(currentDir, pathDirectory, fileCur);
-
-            if (fs.existsSync(filePath)) {
-                console.log(`You are currently in ${currentDir}:`);
-                const readStream = fs.createReadStream(filePath);
-                const writeStream = fs.createWriteStream(pathFinish);
-                stream.pipeline(readStream, writeStream, (err) => {
-                    if (err) {
-                        console.error("Pipeline failed.", err);
-                    } else {
-                        fs.unlink(filePath, (err) => {
-                            if (err) throw err;
-                        });
-                    }
-                });
-            } else {
-                console.log("Operation failed");
-            }
+            moveFile(input.split(" ")[1], input.split(" ")[2], currentDir);
         } else if (input.startsWith("rm")) {
-            const file = input.split(" ")[1];
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            fs.unlink(filePath, (err) => {
-                if (err) throw err;
-                console.log("File deleted!");
-            });
+            removeFile(input.split(" ")[1], currentDir);
         } else if (input.startsWith("os")) {
-            const params = input.split(" ")[1];
-            if (params === "--EOL") {
-                console.log(os.EOL);
-            }
-            if (params === "--cpus") {
-                console.log("Total CPUs: ", os.cpus().length);
-                console.log("CPU model: ", os.cpus()[0].model);
-                for (let i = 0; i < os.cpus().length; i++) {
-                    console.log(`CPU ${i + 1}: ${os.cpus()[i].speed} MHz`);
-                }
-            }
-            if (params === "--homedir") {
-                console.log("Home directory: ", os.homedir());
-            }
-            if (params === "--username") {
-                console.log("Username: ", os.userInfo().username);
-            }
-            if (params === "--architecture") {
-                console.log("Architecture: ", os.arch());
-            }
+            osParam(input.split(" ")[1]);
         } else if (input.startsWith("hash")) {
             const file = input.split(" ")[1];
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            if (fs.existsSync(filePath)) {
-                fs.readFile(filePath, (err, data) => {
-                    if (err) throw new Error("FS operation failed");
-                    const hash = crypto.createHash("sha256").update(data).digest("hex");
-                    console.log(hash);
-                });
-                console.log(`You are currently in ${currentDir}:`);
-            } else {
-                console.log("Operation failed");
-            }
+            hash(file, currentDir);
         } else if (input.startsWith("compress")) {
             const [file, fileDest] = input.split(" ").slice(1);
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            const fileDestPath = path.isAbsolute(fileDest)
-                ? path.join(fileDest, `${file}.gz`)
-                : path.join(currentDir, fileDest, `${file}.gz`);
-
-            if (fs.existsSync(filePath)) {
-                const brotli = zlib.createBrotliCompress();
-                const readStream = fs.createReadStream(filePath);
-                const writeStream = fs.createWriteStream(fileDestPath);
-                readStream.pipe(brotli).pipe(writeStream);
-
-                console.log(`You are currently in ${currentDir}:`);
-            } else {
-                console.log("Operation failed");
-            }
+            compressZlib(file, fileDest, currentDir);
         } else if (input.startsWith("decompress")) {
             const [file, fileDest] = input.split(" ").slice(1);
-            const filePath = path.isAbsolute(file)
-                ? file
-                : path.join(currentDir, file);
-            const fileDestPath = path.isAbsolute(fileDest)
-                ? path.join(fileDest, file.substring(0, file.length - 3))
-                : path.join(currentDir, fileDest, file.substring(0, file.length - 3));
-
-            if (fs.existsSync(filePath)) {
-                const brotli = zlib.createBrotliDecompress();
-                const readStream = fs.createReadStream(filePath);
-                const writeStream = fs.createWriteStream(fileDestPath);
-                readStream.pipe(brotli).pipe(writeStream);
-                console.log(`You are currently in ${currentDir}:`);
-            } else {
-                console.log("Operation failed");
-            }
+            decompressZlib(file, fileDest, currentDir);
         } else {
             console.log("Invalid input");
         }
